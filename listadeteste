@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>E-Ink TV & Rádio</title>
+  <!-- Biblioteca para interpretar streams HLS (.m3u / .m3u8) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: "Courier New", Courier, monospace, -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ESTILO TELA E-INK (P&B, Alto Contraste, Retrô/Paper) */
+    body {
+      background-color: #f2f2ef;
+      color: #111111;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      gap: 10px;
+      width: 100%;
+      overflow-x: hidden;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 2px solid #111111;
+      border-radius: 4px;
+      padding: 10px;
+      box-shadow: 2px 2px 0px #111111;
+      width: 100%;
+    }
+
+    /* TOPO E-INK COM NOME DO CANAL CENTRALIZADO */
+    .top-header {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #111111;
+    }
+
+    .weather-info {
+      font-size: 0.75rem;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .current-channel-title {
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 4px;
+    }
+
+    .time-info .clock {
+      font-size: 0.9rem;
+      font-weight: bold;
+    }
+
+    /* PLAYER DE MÍDIA */
+    .player-screen {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #e8e8e5;
+      border: 2px solid #111111;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .player-screen iframe, .player-screen video {
+      width: 100%;
+      height: 100%;
+      border: none;
+      object-fit: contain;
+    }
+
+    /* PLAYER DE ÁUDIO NO ESTILO E-INK */
+    .audio-player-ui {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      height: 100%;
+      background: #fbfbf9;
+      padding: 10px;
+    }
+
+    .audio-icon-box {
+      font-size: 2rem;
+      border: 2px solid #111111;
+      padding: 8px 16px;
+      background: #ffffff;
+      box-shadow: 2px 2px 0px #111111;
+    }
+
+    .audio-waves {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 16px;
+    }
+
+    .audio-bar {
+      width: 4px;
+      background-color: #111111;
+      height: 20%;
+    }
+
+    .audio-waves.active .audio-bar {
+      animation: eink-bounce 1s infinite alternate ease-in-out;
+    }
+
+    .audio-waves.active .audio-bar:nth-child(1) { animation-delay: 0.1s; }
+    .audio-waves.active .audio-bar:nth-child(2) { animation-delay: 0.4s; }
+    .audio-waves.active .audio-bar:nth-child(3) { animation-delay: 0.2s; }
+    .audio-waves.active .audio-bar:nth-child(4) { animation-delay: 0.5s; }
+    .audio-waves.active .audio-bar:nth-child(5) { animation-delay: 0.3s; }
+
+    @keyframes eink-bounce {
+      0% { height: 20%; }
+      100% { height: 100%; }
+    }
+
+    .audio-player-ui audio {
+      width: 90%;
+      height: 36px;
+      filter: grayscale(100%);
+    }
+
+    .placeholder-text {
+      color: #333333;
+      font-size: 0.85rem;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    /* CONTROLES E-INK */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 8px;
+    }
+
+    .ctrl-btn {
+      background: #ffffff;
+      border: 2px solid #111111;
+      width: 40px;
+      height: 40px;
+      color: #111111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+      font-weight: bold;
+      box-shadow: 2px 2px 0px #111111;
+    }
+
+    .ctrl-btn:active {
+      background: #111111;
+      color: #ffffff;
+      box-shadow: 0px 0px 0px #111111;
+      transform: translate(2px, 2px);
+    }
+
+    /* FORMULÁRIO */
+    .add-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #fbfbf9;
+      padding: 8px;
+      border: 1px solid #111111;
+      margin: 8px 0;
+    }
+
+    .add-form input {
+      width: 100%;
+      background: #ffffff;
+      border: 1px solid #111111;
+      padding: 8px;
+      color: #111111;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .btn-submit {
+      background: #ffffff;
+      color: #111111;
+      border: 2px solid #111111;
+      padding: 8px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 2px 2px 0px #111111;
+    }
+
+    .btn-submit:active {
+      background: #111111;
+      color: #ffffff;
+      box-shadow: 0px 0px 0px #111111;
+      transform: translate(2px, 2px);
+    }
+
+    /* LISTA CONTINUA DE CANAIS */
+    .library-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .badge-count {
+      background: #111111;
+      color: #ffffff;
+      font-size: 0.75rem;
+      font-weight: bold;
+      padding: 1px 6px;
+    }
+
+    .btn-clear {
+      background: none;
+      border: none;
+      color: #111111;
+      text-decoration: underline;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .search-box input {
+      width: 100%;
+      background: #ffffff;
+      border: 1px solid #111111;
+      padding: 8px;
+      color: #111111;
+      font-size: 0.8rem;
+      outline: none;
+      margin-bottom: 8px;
+    }
+
+    /* LISTA VERTICAL */
+    .channels-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .channel-item {
+      background: #ffffff;
+      border: 1px solid #111111;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .channel-item.active {
+      background: #111111;
+      color: #ffffff;
+    }
+
+    .channel-item.active .channel-type {
+      color: #dddddd;
+    }
+
+    .channel-info-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .channel-name {
+      font-size: 0.85rem;
+      font-weight: bold;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .channel-type {
+      font-size: 0.7rem;
+      color: #666666;
+      white-space: nowrap;
+    }
+
+    /* MODAL TELA CHEIA */
+    .fullscreen-modal {
+      position: fixed;
+      inset: 0;
+      background: #f2f2ef;
+      z-index: 99999;
+      display: none;
+      flex-direction: column;
+    }
+
+    .fullscreen-modal.active {
+      display: flex;
+    }
+
+    .fullscreen-header {
+      padding: 8px 12px;
+      background: #ffffff;
+      border-bottom: 2px solid #111111;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .fullscreen-title {
+      color: #111111;
+      font-size: 0.9rem;
+      font-weight: bold;
+    }
+
+    .btn-close-max {
+      background: #ffffff;
+      color: #111111;
+      border: 2px solid #111111;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 2px 2px 0px #111111;
+    }
+
+    .fullscreen-body {
+      flex: 1;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+    }
+
+    /* MODAL DE DOWNLOAD */
+    .download-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .download-modal.active {
+      display: flex;
+    }
+
+    .download-box {
+      background: #ffffff;
+      border: 2px solid #111111;
+      padding: 16px;
+      width: 100%;
+      max-width: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 4px 4px 0px #111111;
+    }
+
+    .download-btn {
+      background: #ffffff;
+      border: 1px solid #111111;
+      color: #111111;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .download-btn:active {
+      background: #111111;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- INPUT OCULTO PARA CARREGAR ARQUIVO TXT / M3U -->
+  <input type="file" id="file-upload" accept=".txt,.m3u,.m3u8" style="display: none;">
+
+  <!-- PLAYER PRINCIPAL -->
+  <div class="card">
+    <div class="top-header">
+      <div class="weather-info">🌧️ 16°C DIADEMA</div>
+      <div class="current-channel-title" id="top-channel-title">SELECIONE UM CANAL</div>
+      <div class="time-info">
+        <div class="clock" id="clock">00:00</div>
+      </div>
+    </div>
+
+    <div class="player-screen" id="player-screen">
+      <div class="placeholder-text" id="placeholder">Nenhum canal em reprodução</div>
+    </div>
+
+    <!-- CONTROLES -->
+    <div class="controls-bar">
+      <button class="ctrl-btn" id="btn-upload" title="Upload Lista TXT/M3U">📤</button>
+      <button class="ctrl-btn" id="btn-prev">❮</button>
+      <button class="ctrl-btn" id="btn-next">❯</button>
+      <button class="ctrl-btn" id="btn-maximize" title="Tela Cheia">⛶</button>
+      <button class="ctrl-btn" id="btn-download" title="Baixar Lista">📥</button>
+    </div>
+  </div>
+
+  <!-- BIBLIOTECA E FORMULÁRIO -->
+  <div class="card">
+    <div class="library-header">
+      <div style="font-size: 0.85rem; font-weight: bold;">
+        LISTA DE CANAIS <span class="badge-count" id="count-badge">0</span>
+      </div>
+      <button class="btn-clear" id="btn-clear-all">Limpar adicionados</button>
+    </div>
+
+    <div class="add-form">
+      <input type="text" id="add-name" placeholder="Nome do Canal (ex: Premiere 7)">
+      <input type="url" id="add-url" placeholder="URL da Transmissão (https://...)">
+      <button class="btn-submit" id="btn-add">+ Adicionar Canal</button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="🔍 Buscar canal...">
+    </div>
+
+    <!-- LISTA VERTICAL -->
+    <div class="channels-list" id="channels-list"></div>
+  </div>
+
+  <!-- PLAYER EM TELA CHEIA -->
+  <div class="fullscreen-modal" id="max-modal">
+    <div class="fullscreen-header">
+      <div class="fullscreen-title" id="max-title">Canal</div>
+      <button class="btn-close-max" id="btn-close-max">✖ Fechar</button>
+    </div>
+    <div class="fullscreen-body" id="max-body"></div>
+  </div>
+
+  <!-- MODAL DE DOWNLOAD -->
+  <div class="download-modal" id="download-modal">
+    <div class="download-box">
+      <h3 style="font-size: 0.95rem; text-transform: uppercase;">Exportar Lista</h3>
+      <p style="font-size: 0.75rem;">Escolha o formato do arquivo:</p>
+      <button class="download-btn" id="dl-m3u">Baixar em .M3U</button>
+      <button class="download-btn" id="dl-txt">Baixar em .TXT</button>
+      <button class="btn-close-max" id="dl-close" style="margin-top: 5px;">Cancelar</button>
+    </div>
+  </div>
+
+  <script>
+    const m3uRawData = `
+#EXTM3U
+#EXTINF:0 type="stream" channelId="cultura",TV Cultura
+https://sinalpublicoetv.vercel.app/?id=cultura
+#EXTINF:0 type="stream" channelId="sbtsp",SBT SP
+https://sinalpublicoetv.vercel.app/?id=sbtsp
+#EXTINF:0 type="stream" channelId="globosp",Globo SP
+https://sinalpublicoetv.vercel.app/?id=globosp
+#EXTINF:0 type="stream" channelId="recordsp",Record SP
+https://sinalpublicoetv.vercel.app/?id=recordsp
+#EXTINF:0 type="stream" channelId="redetv",Rede TV
+https://sinalpublicoetv.vercel.app/?id=redetv
+#EXTINF:0 type="stream" channelId="bandsp",Band SP
+https://sinalpublicoetv.vercel.app/?id=bandsp
+#EXTINF:0 type="stream" channelId="history",History
+https://sinalpublicoetv.vercel.app/?id=history
+#EXTINF:0 type="stream" channelId="history2",History 2
+https://sinalpublicoetv.vercel.app/?id=history2
+#EXTINF:0 type="stream" channelId="adultswim",Adult Swim
+https://sinalpublicoetv.vercel.app/?id=adultswim
+#EXTINF:0 type="stream" channelId="aie",A&E
+https://sinalpublicoetv.vercel.app/?id=aie
+#EXTINF:0 type="stream" channelId="bis",Bis
+https://sinalpublicoetv.vercel.app/?id=bis
+#EXTINF:0 type="stream" channelId="multishow",Multishow
+https://sinalpublicoetv.vercel.app/?id=multishow
+#EXTINF:0 type="stream" channelId="espn",ESPN
+https://sinalpublicoetv.vercel.app/?id=espn
+#EXTINF:0 type="stream" channelId="espn2",ESPN 2
+https://sinalpublicoetv.vercel.app/?id=espn2
+#EXTINF:0 type="stream" channelId="espn3",ESPN 3
+https://sinalpublicoetv.vercel.app/?id=espn3
+#EXTINF:0 type="stream" channelId="espn4",ESPN 4
+https://sinalpublicoetv.vercel.app/?id=espn4
+#EXTINF:0 type="stream" channelId="espn5",ESPN 5
+https://sinalpublicoetv.vercel.app/?id=espn5
+#EXTINF:0 type="stream" channelId="espn6",ESPN 6
+https://sinalpublicoetv.vercel.app/?id=espn6
+#EXTINF:0 type="stream" channelId="premiere",Premiere
+https://sinalpublicoetv.vercel.app/?id=premiere
+#EXTINF:0 type="stream" channelId="premiere2",Premiere 2
+https://sinalpublicoetv.vercel.app/?id=premiere2
+#EXTINF:0 type="stream" channelId="premiere3",Premiere 3
+https://sinalpublicoetv.vercel.app/?id=premiere3
+#EXTINF:0 type="stream" channelId="premiere4",Premiere 4
+https://sinalpublicoetv.vercel.app/?id=premiere4
+#EXTINF:0 type="stream" channelId="premiere5",Premiere 5
+https://sinalpublicoetv.vercel.app/?id=premiere5
+#EXTINF:0 type="stream" channelId="premiere6",Premiere 6
+https://sinalpublicoetv.vercel.app/?id=premiere6
+#EXTINF:0 type="stream" channelId="premiere7",Premiere 7
+https://sinalpublicoetv.vercel.app/?id=premiere7
+#EXTINF:0 type="stream" channelId="premiere8",Premiere 8
+https://sinalpublicoetv.vercel.app/?id=premiere8
+#EXTINF:0 type="stream" channelId="sportv",SporTV
+https://sinalpublicoetv.vercel.app/?id=sportv
+#EXTINF:0 type="stream" channelId="sportv2",SporTV 2
+https://sinalpublicoetv.vercel.app/?id=sportv2
+#EXTINF:0 type="stream" channelId="sportv3",SporTV 3
+https://sinalpublicoetv.vercel.app/?id=sportv3
+#EXTINF:0 type="stream" channelId="sportv4",SporTV 4
+https://sinalpublicoetv.vercel.app/?id=sportv4
+#EXTINF:0 type="stream" channelId="hbo",HBO
+https://sinalpublicoetv.vercel.app/?id=hbo
+#EXTINF:0 type="stream" channelId="hbo2",HBO 2
+https://sinalpublicoetv.vercel.app/?id=hbo2
+#EXTINF:0 type="stream" channelId="hbofamily",HBO Family
+https://sinalpublicoetv.vercel.app/?id=hbofamily
+#EXTINF:0 type="stream" channelId="hbomundi",HBO Mundi
+https://sinalpublicoetv.vercel.app/?id=hbomundi
+#EXTINF:0 type="stream" channelId="hboplus",HBO Plus
+https://sinalpublicoetv.vercel.app/?id=hboplus
+#EXTINF:0 type="stream" channelId="hbopop",HBO Pop
+https://sinalpublicoetv.vercel.app/?id=hbopop
+#EXTINF:0 type="stream" channelId="hboxtreme",HBO Xtreme
+https://sinalpublicoetv.vercel.app/?id=hboxtreme
+#EXTINF:0 type="stream" channelId="hbosignathure",HBO Signature
+https://sinalpublicoetv.vercel.app/?id=hbosignathure
+#EXTINF:0 type="stream" channelId="telecinepremium",Telecine Premium
+https://sinalpublicoetv.vercel.app/?id=telecinepremium
+#EXTINF:0 type="stream" channelId="telecineaction",Telecine Action
+https://sinalpublicoetv.vercel.app/?id=telecineaction
+#EXTINF:0 type="stream" channelId="telecinecult",Telecine Cult
+https://sinalpublicoetv.vercel.app/?id=telecinecult
+#EXTINF:0 type="stream" channelId="telecinefun",Telecine Fun
+https://sinalpublicoetv.vercel.app/?id=telecinefun
+#EXTINF:0 type="stream" channelId="telecinepipoca",Telecine Pipoca
+https://sinalpublicoetv.vercel.app/?id=telecinepipoca
+#EXTINF:0 type="stream" channelId="telecinetouch",Telecine Touch
+https://sinalpublicoetv.vercel.app/?id=telecinetouch
+#EXTINF:0 type="stream" channelId="paramountplus1",Paramount+
+https://sinalpublicoetv.vercel.app/?id=paramountplus1
+#EXTINF:0 type="stream" channelId="max1",Max
+https://sinalpublicoetv.vercel.app/?id=max1
+#EXTINF:0 type="stream" channelId="disneyplus1",Disney+ 1
+https://sinalpublicoetv.vercel.app/?id=disneyplus1
+#EXTINF:0 type="stream" channelId="disneyplus2",Disney+ 2
+https://sinalpublicoetv.vercel.app/?id=disneyplus2
+#EXTINF:0 type="stream" channelId="primevideo",Prime Video 1
+https://sinalpublicoetv.vercel.app/?id=primevideo
+#EXTINF:0 type="stream" channelId="primevideo2",Prime Video 2
+https://sinalpublicoetv.vercel.app/?id=primevideo2
+#EXTINF:0 type="stream" channelId="combate",Combate
+https://sinalpublicoetv.vercel.app/?id=combate
+#EXTINF:0 type="stream" channelId="ufcfightpass",UFC Fight Pass
+https://sinalpublicoetv.vercel.app/?id=ufcfightpass
+#EXTINF:0 type="stream" channelId="amc",AMC
+https://sinalpublicoetv.vercel.app/?id=amc
+#EXTINF:0 type="stream" channelId="animalplanet",Animal Planet
+https://sinalpublicoetv.vercel.app/?id=animalplanet
+#EXTINF:0 type="stream" channelId="megapix",Megapix
+https://sinalpublicoetv.vercel.app/?id=megapix
+#EXTINF:0 type="stream" channelId="axn",AXN
+https://sinalpublicoetv.vercel.app/?id=axn
+#EXTINF:0 type="stream" channelId="space",Space
+https://sinalpublicoetv.vercel.app/?id=space
+#EXTINF:0 type="stream" channelId="tnt",TNT
+https://sinalpublicoetv.vercel.app/?id=tnt
+#EXTINF:0 type="stream" channelId="24h_chaves",Desenhos antigos
+https://sinalpublicoetv.vercel.app/?id=24h_chaves
+    `;
+
+    let currentChannels = [];
+    let activeIndex = -1;
+    let activeHls = null;
+
+    // GERADOR DE ID PARA CHANNELID
+    function generateChannelId(name) {
+      return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function parseM3UText(text) {
+      const lines = text.split('\n');
+      const channels = [];
+      let currentName = '';
+
+      lines.forEach(line => {
+        const l = line.trim();
+        if (l.startsWith('#EXTINF:')) {
+          const commaIndex = l.indexOf(',');
+          currentName = commaIndex !== -1 ? l.slice(commaIndex + 1).trim() : 'Canal sem nome';
+        } else if (l.startsWith('http://') || l.startsWith('https://')) {
+          channels.push({ name: currentName || 'Canal sem nome', url: l });
+          currentName = '';
+        } else if (l.includes(',')) {
+          const parts = l.split(',');
+          if (parts.length >= 2 && parts[1].startsWith('http')) {
+            channels.push({ name: parts[0].trim(), url: parts[1].trim() });
+          }
+        }
+      });
+      return channels;
+    }
+
+    function init() {
+      const saved = localStorage.getItem('mobile_media_channels');
+      if (saved) {
+        currentChannels = JSON.parse(saved);
+      } else {
+        currentChannels = parseM3UText(m3uRawData);
+      }
+      renderChannels(currentChannels);
+      updateClock();
+      setInterval(updateClock, 1000);
+    }
+
+    function renderChannels(list) {
+      const container = document.getElementById('channels-list');
+      container.innerHTML = '';
+
+      list.forEach((ch, index) => {
+        const item = document.createElement('div');
+        item.className = `channel-item ${index === activeIndex ? 'active' : ''}`;
+        item.onclick = () => playChannel(index);
+
+        const urlLower = ch.url.toLowerCase();
+        const isAudio = urlLower.includes('.mp3') || urlLower.includes('.aac') || urlLower.includes('.ogg') || urlLower.includes('stream') || urlLower.includes('radio');
+        
+        item.innerHTML = `
+          <div class="channel-info-left">
+            <div>${isAudio ? '📻' : '📺'}</div>
+            <div class="channel-name">${ch.name}</div>
+          </div>
+          <div class="channel-type">${isAudio ? 'ÁUDIO' : 'VÍDEO'}</div>
+        `;
+        container.appendChild(item);
+      });
+
+      document.getElementById('count-badge').textContent = list.length;
+    }
+
+    function destroyHLS() {
+      if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+      }
+    }
+
+    function playChannel(index) {
+      if (index < 0 || index >= currentChannels.length) return;
+      activeIndex = index;
+      destroyHLS();
+
+      const channel = currentChannels[activeIndex];
+      const screen = document.getElementById('player-screen');
+      const urlLower = channel.url.toLowerCase();
+
+      document.getElementById('top-channel-title').textContent = channel.name;
+
+      const isAudioDirect = urlLower.endsWith('.aac') || urlLower.endsWith('.mp3') || urlLower.endsWith('.ogg') || urlLower.includes('/audio') || urlLower.includes('radio');
+      const isHLS = urlLower.includes('.m3u8') || urlLower.includes('.m3u');
+
+      if (isAudioDirect) {
+        screen.innerHTML = `
+          <div class="audio-player-ui">
+            <div class="audio-icon-box">📻</div>
+            <div class="audio-waves active" id="eink-waves">
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+            </div>
+            <audio id="audio-el" controls autoplay style="margin-top: 5px;">
+              <source src="${channel.url}">
+            </audio>
+          </div>
+        `;
+        const aEl = document.getElementById('audio-el');
+        const wavesEl = document.getElementById('eink-waves');
+        aEl.onplay = () => wavesEl.classList.add('active');
+        aEl.onpause = () => wavesEl.classList.remove('active');
+        aEl.play().catch(() => {});
+      } else if (isHLS) {
+        screen.innerHTML = `<video id="video-el" controls autoplay playsinline></video>`;
+        const vEl = document.getElementById('video-el');
+
+        if (Hls.isSupported()) {
+          activeHls = new Hls();
+          activeHls.loadSource(channel.url);
+          activeHls.attachMedia(vEl);
+          activeHls.on(Hls.Events.MANIFEST_PARSED, () => vEl.play().catch(() => {}));
+        } else if (vEl.canPlayType('application/vnd.apple.mpegurl')) {
+          vEl.src = channel.url;
+          vEl.play().catch(() => {});
+        } else {
+          screen.innerHTML = `<iframe src="${channel.url}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+        }
+      } else {
+        screen.innerHTML = `<iframe src="${channel.url}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+      }
+
+      renderChannels(currentChannels);
+    }
+
+    function addChannel() {
+      const nameInput = document.getElementById('add-name');
+      const urlInput = document.getElementById('add-url');
+
+      const name = nameInput.value.trim();
+      const url = urlInput.value.trim();
+
+      if (!name || !url) {
+        alert("Preencha o Nome e a URL do canal.");
+        return;
+      }
+
+      currentChannels.push({ name, url });
+      localStorage.setItem('mobile_media_channels', JSON.stringify(currentChannels));
+
+      nameInput.value = '';
+      urlInput.value = '';
+
+      renderChannels(currentChannels);
+    }
+
+    document.getElementById('btn-upload').onclick = () => {
+      document.getElementById('file-upload').click();
+    };
+
+    document.getElementById('file-upload').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result;
+        const importedChannels = parseM3UText(text);
+
+        if (importedChannels.length > 0) {
+          currentChannels = [...currentChannels, ...importedChannels];
+          localStorage.setItem('mobile_media_channels', JSON.stringify(currentChannels));
+          renderChannels(currentChannels);
+          alert(`${importedChannels.length} canais importados!`);
+        } else {
+          alert("Nenhum canal válido foi encontrado.");
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    document.getElementById('btn-download').onclick = () => {
+      document.getElementById('download-modal').classList.add('active');
+    };
+
+    document.getElementById('dl-close').onclick = () => {
+      document.getElementById('download-modal').classList.remove('active');
+    };
+
+    // DOWNLOAD NO FORMATO EXATO PEDIDO: #EXTM3U e #EXTINF:0 type="stream" channelId="..."
+    document.getElementById('dl-m3u').onclick = () => {
+      let content = "#EXTM3U\n";
+      currentChannels.forEach(ch => {
+        const chId = generateChannelId(ch.name);
+        content += `#EXTINF:0 type="stream" channelId="${chId}",${ch.name}\n${ch.url}\n`;
+      });
+      downloadFile(content, "lista_canais.m3u", "text/plain");
+      document.getElementById('download-modal').classList.remove('active');
+    };
+
+    document.getElementById('dl-txt').onclick = () => {
+      let content = "#EXTM3U\n";
+      currentChannels.forEach(ch => {
+        const chId = generateChannelId(ch.name);
+        content += `#EXTINF:0 type="stream" channelId="${chId}",${ch.name}\n${ch.url}\n`;
+      });
+      downloadFile(content, "lista_canais.txt", "text/plain");
+      document.getElementById('download-modal').classList.remove('active');
+    };
+
+    function downloadFile(content, fileName, contentType) {
+      const a = document.createElement("a");
+      const file = new Blob([content], { type: contentType });
+      a.href = URL.createObjectURL(file);
+      a.download = fileName;
+      a.click();
+    }
+
+    function openMaximize() {
+      if (activeIndex < 0) {
+        alert("Selecione um canal antes de maximizar.");
+        return;
+      }
+
+      const channel = currentChannels[activeIndex];
+      document.getElementById('max-title').textContent = channel.name;
+
+      const urlLower = channel.url.toLowerCase();
+      const isAudioDirect = urlLower.endsWith('.aac') || urlLower.endsWith('.mp3') || urlLower.endsWith('.ogg') || urlLower.includes('/audio') || urlLower.includes('radio');
+      const isHLS = urlLower.includes('.m3u8') || urlLower.includes('.m3u');
+
+      const maxBody = document.getElementById('max-body');
+
+      if (isAudioDirect) {
+        maxBody.innerHTML = `
+          <div class="audio-player-ui" style="background: #ffffff;">
+            <div class="audio-icon-box" style="font-size:3rem;">📻</div>
+            <div class="audio-waves active" id="max-waves">
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+              <div class="audio-bar"></div>
+            </div>
+            <audio id="max-audio-el" controls autoplay style="width: 80%; max-width: 400px; margin-top: 20px;">
+              <source src="${channel.url}">
+            </audio>
+          </div>
+        `;
+        const mA = document.getElementById('max-audio-el');
+        const mWaves = document.getElementById('max-waves');
+        mA.onplay = () => mWaves.classList.add('active');
+        mA.onpause = () => mWaves.classList.remove('active');
+        mA.play().catch(() => {});
+      } else if (isHLS) {
+        maxBody.innerHTML = `<video id="max-video-el" controls autoplay playsinline style="width:100%; height:100%;"></video>`;
+        const maxVideo = document.getElementById('max-video-el');
+        if (Hls.isSupported()) {
+          const maxHls = new Hls();
+          maxHls.loadSource(channel.url);
+          maxHls.attachMedia(maxVideo);
+          maxHls.on(Hls.Events.MANIFEST_PARSED, () => maxVideo.play().catch(() => {}));
+        } else if (maxVideo.canPlayType('application/vnd.apple.mpegurl')) {
+          maxVideo.src = channel.url;
+          maxVideo.play().catch(() => {});
+        }
+      } else {
+        maxBody.innerHTML = `<iframe src="${channel.url}" allow="autoplay; fullscreen" allowfullscreen style="width:100%; height:100%; border:none;"></iframe>`;
+      }
+
+      document.getElementById('max-modal').classList.add('active');
+    }
+
+    function closeMaximize() {
+      document.getElementById('max-modal').classList.remove('active');
+      document.getElementById('max-body').innerHTML = '';
+    }
+
+    document.getElementById('btn-add').onclick = addChannel;
+    document.getElementById('btn-maximize').onclick = openMaximize;
+    document.getElementById('btn-close-max').onclick = closeMaximize;
+
+    document.getElementById('btn-clear-all').onclick = () => {
+      if (confirm("Deseja apagar os canais salvos?")) {
+        currentChannels = [];
+        localStorage.removeItem('mobile_media_channels');
+        destroyHLS();
+        renderChannels(currentChannels);
+      }
+    };
+
+    document.getElementById('search-input').oninput = (e) => {
+      const term = e.target.value.toLowerCase();
+      const filtered = currentChannels.filter(c => c.name.toLowerCase().includes(term));
+      renderChannels(filtered);
+    };
+
+    document.getElementById('btn-next').onclick = () => {
+      if (currentChannels.length > 0) playChannel((activeIndex + 1) % currentChannels.length);
+    };
+
+    document.getElementById('btn-prev').onclick = () => {
+      if (currentChannels.length > 0) playChannel((activeIndex - 1 + currentChannels.length) % currentChannels.length);
+    };
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    init();
+  </script>
+</body>
+</html>
